@@ -1,5 +1,7 @@
 ### Pixudi 👋
 
+During development, we will partially upload parts of our project to open source, and upon individual request, we provide access to our repository. If you need access to view the code at the stage of work, please write to out email.
+
 ![Group 50](https://user-images.githubusercontent.com/61367249/227773602-c335d2a1-9232-4daa-b0e3-1193165aa961.png)
 
 ## Front progress
