@@ -1,17 +1,40 @@
 ### Pixudi 👋
-
 During development, we will partially upload parts of our project to open source, and upon individual request, we provide access to our repository. If you need access to view the code at the stage of work, please write to out email.
 
 ![Group 50](https://user-images.githubusercontent.com/61367249/227773602-c335d2a1-9232-4daa-b0e3-1193165aa961.png)
+![](https://user-images.githubusercontent.com/91618941/223476040-42ed6315-467b-49c4-9150-6bdb630abbb3.png)
+		  ![Pixudi](https://user-images.githubusercontent.com/91618941/227238776-857e6bb3-b5e2-4f9e-9896-c6029f6219d8.png) is a blockchain-based board game where players compete to collect treasures by overcoming obstacles and completing missions. The game includes unique scenarios, mechanics, treasures, and adventures. Pixudi aims to introduce blockchain technology to millions of users and bridge the gap between traditional board games and NFT games. The game will be available on the web, Nintendo Switch, mobile devices, and physical copies. NFTs include boards, characters, items, and pets, which can be traded and purchased on the Pixudi Marketplace. The game mechanics involve rolling dice and moving characters on different boards with various effects, including fights, mini-games, and shops. The board is interactive: with skins, pets, and in-game items come handy but players cannot buy the victory.
 
-## Front progress
+![](https://user-images.githubusercontent.com/91618941/228045220-aa8705f2-b1a9-4c62-b575-1b887f8f164e.png)
+![Team](https://user-images.githubusercontent.com/91618941/227273388-eebaf558-f47e-4707-9c9e-146bd6ee9ec0.png)
+![About Us](https://user-images.githubusercontent.com/91618941/228051379-91a9a3f7-5615-45d3-9070-e5b871ee007c.png)
+![Alex](https://user-images.githubusercontent.com/91618941/223725200-6a95fd15-3c68-448e-9862-ecd4af313ed0.png) ![Eugene](https://user-images.githubusercontent.com/91618941/223723498-83d03a77-f181-4f25-8676-b4fc3dab8d3b.png) ![Katya](https://user-images.githubusercontent.com/91618941/223732734-2dd93fe1-7646-4c2c-b328-40b987864974.png) 	![Nikki](https://user-images.githubusercontent.com/91618941/223732785-3b35ca20-20d1-4161-9951-e42c6a9ceb1d.png) ![Max](https://user-images.githubusercontent.com/91618941/223732820-06d6f7fa-e458-40a3-8adc-168e3e8bd4b0.png) ![Dan](https://user-images.githubusercontent.com/91618941/223732856-66079d47-fcb0-42e0-9db1-b4c6e3d457d0.png) ![Stephen](https://user-images.githubusercontent.com/91618941/223732905-3fe7e2ee-51cd-4acc-bd2e-44266671a368.png) ![Zehan](https://user-images.githubusercontent.com/91618941/223732953-fad88fe5-37b7-4522-a832-df5e32f9b3f0.png) ![Ashley](https://user-images.githubusercontent.com/91618941/223733007-a607e24b-0795-4fa9-b899-4cf2530c497c.png)
+![](https://user-images.githubusercontent.com/91618941/229375325-6ec0e950-8c84-4c22-b2bc-2dcfa061bfb1.png)
+![](https://user-images.githubusercontent.com/91618941/229375875-fe81daeb-5d5e-43c3-9d20-78d47077a7fc.png)
 <img width="337" alt="Screenshot 2023-03-26 at 14 02 38" src="https://user-images.githubusercontent.com/61367249/227774478-7f757a5c-43db-495e-bf16-5e95898fcbaa.png">
-
 <img width="817" alt="Screenshot 2023-03-26 at 14 02 33" src="https://user-images.githubusercontent.com/61367249/227774445-74e0a12e-8432-42f1-9f42-a649cbaa3580.png">
 
-## Backend progress
-
+![](https://user-images.githubusercontent.com/91618941/229375915-ce63d1c5-eb17-4628-a440-163d2f096db8.png)
 <img width="320" alt="Screenshot 2023-03-26 at 14 00 58" src="https://user-images.githubusercontent.com/61367249/227774334-d6b50fe6-7932-4369-926c-4ade581709d4.png">
 <img width="832" alt="Screenshot 2023-03-26 at 14 01 53" src="https://user-images.githubusercontent.com/61367249/227774335-d7f5bf7a-c6bf-43e8-89b3-6a9b8b298be2.png">
-
-
+![](https://user-images.githubusercontent.com/91618941/229462734-8c2c08f1-f975-4a28-85de-a628ae0e3154.png)
+![](https://user-images.githubusercontent.com/91618941/229473367-6bdf824b-f7de-47b3-8225-6936bf5c0913.png)
+![](https://user-images.githubusercontent.com/91618941/229480074-9fd4d15f-d75c-4024-8565-c4cf005ca908.png)
+![](https://user-images.githubusercontent.com/91618941/229484241-bc2c42d0-f19c-4a21-9eba-0f20cefd138f.png)
+![](https://user-images.githubusercontent.com/91618941/229494732-c6579be1-b9f2-4384-95fc-f274739d257e.png)
+![](https://user-images.githubusercontent.com/91618941/224049862-8c60f59a-82e2-45d1-aba8-259dcc002dbe.png)
+![](https://user-images.githubusercontent.com/91618941/224059353-89b08e7d-3269-4666-a682-0b62906487df.png) ![](https://user-images.githubusercontent.com/91618941/224059271-68db8b58-6ad5-4d34-b4a9-ce98cae73a04.png) ![](https://user-images.githubusercontent.com/91618941/224059149-1a0041ef-a74e-4155-bd96-cb8f09c01e0e.png)
+![](https://user-images.githubusercontent.com/91618941/224053345-96dca6b3-4e6b-4a13-b368-84a27765ccce.png)
+![](https://user-images.githubusercontent.com/91618941/229524738-93caa172-663d-40b0-9e04-4315e833a4b4.png)
+![](https://user-images.githubusercontent.com/91618941/229525297-c7bf9783-91b0-4131-aaf9-5f4dff2aa09b.png)
+![tokens](https://user-images.githubusercontent.com/91618941/229524589-74afb9e9-b756-40d7-9808-235c6f8aaa90.png)
+-   [![Profile (2)](https://user-images.githubusercontent.com/91618941/223703782-7aa4e1cf-9a66-49a7-985d-e9bf2ebe8e33.png)](https://user-images.githubusercontent.com/91618941/223703782-7aa4e1cf-9a66-49a7-985d-e9bf2ebe8e33.png)  **Contact Name:**  Alex Scoresby
+-   [![Telegram](https://user-images.githubusercontent.com/91618941/223689479-8a84cef2-eac1-4a7a-b5fb-870032c542a9.png)](https://user-images.githubusercontent.com/91618941/223689479-8a84cef2-eac1-4a7a-b5fb-870032c542a9.png)  **Contact telegram:**  @ducktalesblock
+-   [![Discord (1)](https://user-images.githubusercontent.com/91618941/223690631-79a2d513-80a4-4849-8360-509d00db5775.png)](https://user-images.githubusercontent.com/91618941/223690631-79a2d513-80a4-4849-8360-509d00db5775.png)  **Contact discord:**  Alex Scoresby#6447
+-   [![Mail](https://user-images.githubusercontent.com/91618941/223698121-af355250-3343-4b2d-8e42-acff904f0b0a.png)](https://user-images.githubusercontent.com/91618941/223698121-af355250-3343-4b2d-8e42-acff904f0b0a.png)  **Contact Email:**  [welcome@pixudi.com](mailto:welcome@pixudi.com)
+-   [![Coin](https://user-images.githubusercontent.com/91618941/223690472-d337755e-3c53-44a2-8459-706e06d144a1.png)](https://user-images.githubusercontent.com/91618941/223690472-d337755e-3c53-44a2-8459-706e06d144a1.png)  **Team Website:**  [https://kapcrew.com](https://kapcrew.com/)
+-   [![Logo small (1)](https://user-images.githubusercontent.com/91618941/223690230-41914ccb-6223-4334-9545-ca3ebab830b4.png)](https://user-images.githubusercontent.com/91618941/223690230-41914ccb-6223-4334-9545-ca3ebab830b4.png)  **Project Website:**  [https://pixudi.com](https://pixudi.com/)
+-   [![Twitter](https://user-images.githubusercontent.com/91618941/223698416-0ac4b1de-f00d-4d39-ace2-87430ab5fee8.png)](https://user-images.githubusercontent.com/91618941/223698416-0ac4b1de-f00d-4d39-ace2-87430ab5fee8.png)  **Project twitter:**  [https://twitter.com/thepixudi](https://twitter.com/thepixudi)
+-   [![Discord (1)](https://user-images.githubusercontent.com/91618941/223690631-79a2d513-80a4-4849-8360-509d00db5775.png)](https://user-images.githubusercontent.com/91618941/223690631-79a2d513-80a4-4849-8360-509d00db5775.png)  **Project discord:**  [https://discord.com/invite/W4QGHh9FRX](https://discord.com/invite/W4QGHh9FRX)
+-   [![Telegram](https://user-images.githubusercontent.com/91618941/223689479-8a84cef2-eac1-4a7a-b5fb-870032c542a9.png)](https://user-images.githubusercontent.com/91618941/223689479-8a84cef2-eac1-4a7a-b5fb-870032c542a9.png)  **Project telegram:**  [https://t.me/pixudi](https://t.me/pixudi)
+-   [![Linkedin](https://user-images.githubusercontent.com/91618941/223697914-6f94292d-6216-499e-ba52-589004ed4ee7.png)](https://user-images.githubusercontent.com/91618941/223697914-6f94292d-6216-499e-ba52-589004ed4ee7.png)  **Project Linkedin:**  [https://www.linkedin.com/company/pixudi/](https://www.linkedin.com/company/pixudi/)
