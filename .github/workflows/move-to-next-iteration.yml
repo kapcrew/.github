@@ -1,0 +1,21 @@
+name: Move to Next Iteration
+
+on:
+  schedule:
+    - cron: '0 5 * * 1'  # Еженедельный запуск в понедельник 5:00 UTC
+  workflow_dispatch:  # Ручной запуск
+
+jobs:
+  move-to-next:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Move issues to next iteration
+        uses: blombard/move-to-next-iteration@master
+        with:
+          owner: 'kapcrew'
+          number: 3  # Замени на реальный номер
+          token: ${{ secrets.PROJECT_PAT }}
+          iteration-field: 'Iterations'
+          iteration: 'Iterations 133'
+          new-iteration: 'Iterations 134'
+          statuses: 'New,In progress,In review'
