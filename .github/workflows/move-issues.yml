@@ -85,9 +85,7 @@ jobs:
               }
             `;
             
-            // Получаем номер проекта из URL (например, Projects/1)
-            // ВАЖНО: замените "1" на номер вашего проекта
-            const projectNumber = 1; // TODO: изменить на ваш номер проекта
+            const projectNumber = 3; // TODO: изменить на ваш номер проекта
             const owner = context.repo.owner;
             
             let projectData;
