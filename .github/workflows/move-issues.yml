@@ -114,6 +114,7 @@ jobs:
             }
             
             // GraphQL запрос для получения информации о проекте
+            // ИСПРАВЛЕНО: увеличено количество загружаемых итераций до 50
             const projectQuery = `
               query($owner: String!, $number: Int!) {
                 organization(login: $owner) {
@@ -130,6 +131,13 @@ jobs:
                               id
                               title
                               startDate
+                              duration
+                            }
+                            completedIterations {
+                              id
+                              title
+                              startDate
+                              duration
                             }
                           }
                         }
@@ -163,20 +171,35 @@ jobs:
             
             console.log(`✅ Найден проект: ${project.title}`);
             
+            // ИСПРАВЛЕНО: объединяем активные и завершенные итерации
+            const activeIterations = iterationField.configuration.iterations || [];
+            const completedIterations = iterationField.configuration.completedIterations || [];
+            const allIterations = [...activeIterations, ...completedIterations];
+            
+            console.log(`📊 Найдено итераций: ${allIterations.length}`);
+            console.log(`   - Активных: ${activeIterations.length}`);
+            console.log(`   - Завершенных: ${completedIterations.length}`);
+            
+            // Выводим все доступные итерации для отладки
+            console.log('📋 Доступные итерации:');
+            allIterations.forEach(iter => {
+              console.log(`   - "${iter.title}" (ID: ${iter.id.substring(iter.id.length - 8)})`);
+            });
+            console.log('---');
+            
             // Находим нужные итерации
-            const iterations = iterationField.configuration.iterations;
-            const sourceIteration = iterations.find(i => i.title === sourceIterationName);
-            const targetIteration = iterations.find(i => i.title === targetIterationName);
+            const sourceIteration = allIterations.find(i => i.title === sourceIterationName);
+            const targetIteration = allIterations.find(i => i.title === targetIterationName);
             
             if (!sourceIteration) {
               core.setFailed(`❌ Итерация "${sourceIterationName}" не найдена`);
-              console.log('Доступные итерации:', iterations.map(i => i.title).join(', '));
+              console.log('💡 Проверьте точное название (с учетом регистра и пробелов)');
               return;
             }
             
             if (!targetIteration) {
               core.setFailed(`❌ Итерация "${targetIterationName}" не найдена`);
-              console.log('Доступные итерации:', iterations.map(i => i.title).join(', '));
+              console.log('💡 Проверьте точное название (с учетом регистра и пробелов)');
               return;
             }
             
@@ -228,6 +251,7 @@ jobs:
             let movedCount = 0;
             let errorCount = 0;
             const movedIssues = [];
+            const errors = [];
             
             // Mutation для обновления поля итерации
             const updateMutation = `
@@ -262,12 +286,16 @@ jobs:
                 
                 // Добавляем комментарий к issue (если включено)
                 if (addComment) {
-                  await github.rest.issues.createComment({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    issue_number: issue.number,
-                    body: `🔄 Задача автоматически перенесена из итерации **"${sourceIterationName}"** в **"${targetIterationName}"**\n\n_Дата переноса: ${new Date().toLocaleString('ru-RU')}_`
-                  });
+                  try {
+                    await github.rest.issues.createComment({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: issue.number,
+                      body: `🔄 Задача автоматически перенесена из итерации **"${sourceIterationName}"** в **"${targetIterationName}"**\n\n_Дата переноса: ${new Date().toLocaleString('ru-RU')}_`
+                    });
+                  } catch (commentError) {
+                    console.log(`⚠️  Не удалось добавить комментарий к #${issue.number}: ${commentError.message}`);
+                  }
                 }
                 
                 movedCount++;
@@ -280,7 +308,9 @@ jobs:
                 
               } catch (error) {
                 errorCount++;
-                console.error(`❌ Ошибка при переносе #${item.content?.number}: ${error.message}`);
+                const errorMsg = `#${item.content?.number}: ${error.message}`;
+                errors.push(errorMsg);
+                console.error(`❌ Ошибка при переносе ${errorMsg}`);
               }
             }
             
@@ -289,6 +319,11 @@ jobs:
             console.log(`   ✅ Успешно перенесено: ${movedCount}`);
             console.log(`   ❌ Ошибок: ${errorCount}`);
             console.log(`   📊 Всего обработано: ${itemsToMove.length}`);
+            
+            if (errors.length > 0) {
+              console.log('\n⚠️  Детали ошибок:');
+              errors.forEach(err => console.log(`   - ${err}`));
+            }
             
             // Создаем issue с отчетом
             if (movedCount > 0) {
@@ -303,7 +338,10 @@ jobs:
               }
               
               if (errorCount > 0) {
-                reportBody += `\n### ⚠️ Ошибок при переносе: ${errorCount}\n`;
+                reportBody += `\n### ⚠️ Ошибок при переносе: ${errorCount}\n\n`;
+                errors.forEach(err => {
+                  reportBody += `- ${err}\n`;
+                });
               }
               
               try {
