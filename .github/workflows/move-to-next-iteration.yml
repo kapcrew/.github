@@ -1,21 +1,185 @@
 name: Move to Next Iteration
 
 on:
-  schedule:
-    - cron: '0 5 * * 1'  # Еженедельный запуск в понедельник 5:00 UTC
-  workflow_dispatch:  # Ручной запуск
+  # Запуск вручную через интерфейс GitHub Actions
+  workflow_dispatch:
+    inputs:
+      source_milestone:
+        description: 'Название предыдущей итерации (например: Sprint 1)'
+        required: true
+        type: string
+      target_milestone:
+        description: 'Название текущей итерации (например: Sprint 2)'
+        required: true
+        type: string
+      add_comment:
+        description: 'Добавить комментарий к перенесенным задачам?'
+        required: false
+        type: boolean
+        default: true
+  
+  # Автоматический запуск по расписанию (опционально)
+  # schedule:
+  #   - cron: '0 9 * * 1'  # Каждый понедельник в 9:00 UTC
 
 jobs:
-  move-to-next:
+  move-issues:
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+    
     steps:
-      - name: Move issues to next iteration
-        uses: blombard/move-to-next-iteration@master
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Перенос незакрытых задач между milestone
+        uses: actions/github-script@v7
         with:
-          owner: 'kapcrew'
-          number: 3  # Замени на реальный номер
-          token: ${{ secrets.PROJECT_PAT }}
-          iteration-field: 'Iterations'
-          iteration: 'Iterations 133'
-          new-iteration: 'Iterations 134'
-          statuses: 'New,In progress,In review'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const sourceMilestoneName = '${{ github.event.inputs.source_milestone }}';
+            const targetMilestoneName = '${{ github.event.inputs.target_milestone }}';
+            const addComment = '${{ github.event.inputs.add_comment }}' === 'true';
+            
+            console.log('🚀 Начинаем перенос задач');
+            console.log(`📤 Источник: "${sourceMilestoneName}"`);
+            console.log(`📥 Цель: "${targetMilestoneName}"`);
+            console.log(`💬 Комментарии: ${addComment ? 'Да' : 'Нет'}`);
+            console.log('---');
+            
+            // Получаем список всех milestone
+            const { data: milestones } = await github.rest.issues.listMilestones({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'all',
+              per_page: 100
+            });
+            
+            console.log(`📋 Всего найдено milestone: ${milestones.length}`);
+            
+            // Находим исходный milestone
+            const sourceMilestone = milestones.find(m => m.title === sourceMilestoneName);
+            if (!sourceMilestone) {
+              core.setFailed(`❌ Milestone "${sourceMilestoneName}" не найден`);
+              return;
+            }
+            console.log(`✅ Найден исходный milestone: #${sourceMilestone.number} (${sourceMilestone.open_issues} открытых задач)`);
+            
+            // Находим целевой milestone
+            const targetMilestone = milestones.find(m => m.title === targetMilestoneName);
+            if (!targetMilestone) {
+              core.setFailed(`❌ Milestone "${targetMilestoneName}" не найден`);
+              return;
+            }
+            console.log(`✅ Найден целевой milestone: #${targetMilestone.number}`);
+            console.log('---');
+            
+            // Получаем все открытые issues из исходного milestone
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              milestone: sourceMilestone.number,
+              state: 'open',
+              per_page: 100
+            });
+            
+            // Фильтруем pull requests (оставляем только issues)
+            const actualIssues = issues.filter(issue => !issue.pull_request);
+            
+            console.log(`📊 Найдено задач для переноса: ${actualIssues.length}`);
+            
+            if (actualIssues.length === 0) {
+              console.log('✨ Нет открытых задач для переноса');
+              return;
+            }
+            
+            console.log('---');
+            
+            let movedCount = 0;
+            let errorCount = 0;
+            const movedIssues = [];
+            
+            // Переносим каждую задачу
+            for (const issue of actualIssues) {
+              try {
+                // Обновляем milestone
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  milestone: targetMilestone.number
+                });
+                
+                // Добавляем комментарий (если включено)
+                if (addComment) {
+                  await github.rest.issues.createComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issue.number,
+                    body: `🔄 Задача автоматически перенесена из milestone **"${sourceMilestoneName}"** в **"${targetMilestoneName}"**\n\n_Дата переноса: ${new Date().toLocaleString('ru-RU')}_`
+                  });
+                }
+                
+                movedCount++;
+                movedIssues.push({
+                  number: issue.number,
+                  title: issue.title,
+                  url: issue.html_url
+                });
+                console.log(`✅ #${issue.number}: ${issue.title}`);
+                
+              } catch (error) {
+                errorCount++;
+                console.error(`❌ Ошибка при переносе #${issue.number}: ${error.message}`);
+              }
+            }
+            
+            console.log('---');
+            console.log(`📈 Результаты переноса:`);
+            console.log(`   ✅ Успешно перенесено: ${movedCount}`);
+            console.log(`   ❌ Ошибок: ${errorCount}`);
+            console.log(`   📊 Всего обработано: ${actualIssues.length}`);
+            
+            // Создаем issue с отчетом (опционально)
+            if (movedCount > 0) {
+              let reportBody = `## 📋 Отчет о переносе задач\n\n`;
+              reportBody += `**Источник:** ${sourceMilestoneName}\n`;
+              reportBody += `**Назначение:** ${targetMilestoneName}\n`;
+              reportBody += `**Дата:** ${new Date().toLocaleString('ru-RU')}\n\n`;
+              reportBody += `### ✅ Перенесено задач: ${movedCount}\n\n`;
+              
+              // Список перенесенных задач
+              for (const issue of movedIssues) {
+                reportBody += `- #${issue.number} - [${issue.title}](${issue.url})\n`;
+              }
+              
+              if (errorCount > 0) {
+                reportBody += `\n### ⚠️ Ошибок при переносе: ${errorCount}\n`;
+              }
+              
+              try {
+                await github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title: `🔄 Отчет: ${sourceMilestoneName} → ${targetMilestoneName}`,
+                  body: reportBody,
+                  labels: ['automation', 'report']
+                });
+                console.log('📝 Создан отчет о переносе');
+              } catch (error) {
+                console.error(`⚠️ Не удалось создать отчет: ${error.message}`);
+              }
+            }
+            
+            // Устанавливаем outputs для использования в других шагах
+            core.setOutput('moved_count', movedCount);
+            core.setOutput('error_count', errorCount);
+            
+            console.log('---');
+            console.log('🎉 Перенос завершен!');
+      
+      - name: Итоговое сообщение
+        run: |
+          echo "✨ Workflow выполнен успешно!"
+          echo "📊 Перенесено задач: ${{ steps.move-issues.outputs.moved_count }}"
