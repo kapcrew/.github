@@ -1,0 +1,251 @@
+name: Перенос задач между итерациями (Projects)
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_iteration:
+        description: 'Название предыдущей итерации (например: Iterations 133)'
+        required: true
+        type: string
+      target_iteration:
+        description: 'Название текущей итерации (например: Iterations 136)'
+        required: true
+        type: string
+      add_comment:
+        description: 'Добавить комментарий к перенесенным задачам?'
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  move-issues:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Перенос задач между итерациями в Projects
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PROJECT_TOKEN }}
+          script: |
+            const sourceIterationName = '${{ github.event.inputs.source_iteration }}';
+            const targetIterationName = '${{ github.event.inputs.target_iteration }}';
+            const addComment = '${{ github.event.inputs.add_comment }}' === 'true';
+            
+            console.log('🚀 Начинаем перенос задач в Projects');
+            console.log(`📤 Источник: "${sourceIterationName}"`);
+            console.log(`📥 Цель: "${targetIterationName}"`);
+            console.log('---');
+            
+            // GraphQL запрос для получения информации о проекте
+            const projectQuery = `
+              query($owner: String!, $number: Int!) {
+                organization(login: $owner) {
+                  projectV2(number: $number) {
+                    id
+                    title
+                    field(name: "Iterations") {
+                      ... on ProjectV2IterationField {
+                        id
+                        name
+                        configuration {
+                          iterations {
+                            id
+                            title
+                            startDate
+                          }
+                        }
+                      }
+                    }
+                    items(first: 100) {
+                      nodes {
+                        id
+                        content {
+                          ... on Issue {
+                            number
+                            title
+                            url
+                            state
+                          }
+                        }
+                        fieldValueByName(name: "Iterations") {
+                          ... on ProjectV2ItemFieldIterationValue {
+                            iterationId
+                            title
+                          }
+                        }
+                        fieldValueByName(name: "Status") {
+                          ... on ProjectV2ItemFieldSingleSelectValue {
+                            name
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+            
+            // Получаем номер проекта из URL (например, Projects/1)
+            // ВАЖНО: замените "1" на номер вашего проекта
+            const projectNumber = 1; // TODO: изменить на ваш номер проекта
+            const owner = context.repo.owner;
+            
+            let projectData;
+            try {
+              projectData = await github.graphql(projectQuery, {
+                owner: owner,
+                number: projectNumber
+              });
+            } catch (error) {
+              core.setFailed(`❌ Ошибка получения данных проекта: ${error.message}`);
+              return;
+            }
+            
+            const project = projectData.organization.projectV2;
+            const iterationField = project.field;
+            
+            if (!iterationField) {
+              core.setFailed('❌ Поле "Iterations" не найдено в проекте');
+              return;
+            }
+            
+            console.log(`✅ Найден проект: ${project.title}`);
+            
+            // Находим нужные итерации
+            const iterations = iterationField.configuration.iterations;
+            const sourceIteration = iterations.find(i => i.title === sourceIterationName);
+            const targetIteration = iterations.find(i => i.title === targetIterationName);
+            
+            if (!sourceIteration) {
+              core.setFailed(`❌ Итерация "${sourceIterationName}" не найдена`);
+              console.log('Доступные итерации:', iterations.map(i => i.title).join(', '));
+              return;
+            }
+            
+            if (!targetIteration) {
+              core.setFailed(`❌ Итерация "${targetIterationName}" не найдена`);
+              console.log('Доступные итерации:', iterations.map(i => i.title).join(', '));
+              return;
+            }
+            
+            console.log(`✅ Найдена исходная итерация: ${sourceIteration.title}`);
+            console.log(`✅ Найдена целевая итерация: ${targetIteration.title}`);
+            console.log('---');
+            
+            // Фильтруем задачи из исходной итерации
+            const itemsToMove = project.items.nodes.filter(item => {
+              if (!item.content) return false; // пропускаем пустые элементы
+              if (item.content.state === 'CLOSED') return false; // пропускаем закрытые
+              
+              const iterationValue = item.fieldValueByName;
+              if (!iterationValue || !iterationValue.iterationId) return false;
+              
+              return iterationValue.iterationId === sourceIteration.id;
+            });
+            
+            console.log(`📊 Найдено задач для переноса: ${itemsToMove.length}`);
+            
+            if (itemsToMove.length === 0) {
+              console.log('✨ Нет задач для переноса');
+              return;
+            }
+            
+            console.log('---');
+            
+            let movedCount = 0;
+            let errorCount = 0;
+            const movedIssues = [];
+            
+            // Mutation для обновления поля итерации
+            const updateMutation = `
+              mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $iterationId: String!) {
+                updateProjectV2ItemFieldValue(
+                  input: {
+                    projectId: $projectId
+                    itemId: $itemId
+                    fieldId: $fieldId
+                    value: {iterationId: $iterationId}
+                  }
+                ) {
+                  projectV2Item {
+                    id
+                  }
+                }
+              }
+            `;
+            
+            // Переносим каждую задачу
+            for (const item of itemsToMove) {
+              try {
+                const issue = item.content;
+                
+                // Обновляем итерацию
+                await github.graphql(updateMutation, {
+                  projectId: project.id,
+                  itemId: item.id,
+                  fieldId: iterationField.id,
+                  iterationId: targetIteration.id
+                });
+                
+                // Добавляем комментарий к issue (если включено)
+                if (addComment) {
+                  await github.rest.issues.createComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issue.number,
+                    body: `🔄 Задача автоматически перенесена из итерации **"${sourceIterationName}"** в **"${targetIterationName}"**\n\n_Дата переноса: ${new Date().toLocaleString('ru-RU')}_`
+                  });
+                }
+                
+                movedCount++;
+                movedIssues.push({
+                  number: issue.number,
+                  title: issue.title,
+                  url: issue.url
+                });
+                console.log(`✅ #${issue.number}: ${issue.title}`);
+                
+              } catch (error) {
+                errorCount++;
+                console.error(`❌ Ошибка при переносе #${item.content?.number}: ${error.message}`);
+              }
+            }
+            
+            console.log('---');
+            console.log(`📈 Результаты переноса:`);
+            console.log(`   ✅ Успешно перенесено: ${movedCount}`);
+            console.log(`   ❌ Ошибок: ${errorCount}`);
+            console.log(`   📊 Всего обработано: ${itemsToMove.length}`);
+            
+            // Создаем issue с отчетом
+            if (movedCount > 0) {
+              let reportBody = `## 📋 Отчет о переносе задач\n\n`;
+              reportBody += `**Источник:** ${sourceIterationName}\n`;
+              reportBody += `**Назначение:** ${targetIterationName}\n`;
+              reportBody += `**Дата:** ${new Date().toLocaleString('ru-RU')}\n\n`;
+              reportBody += `### ✅ Перенесено задач: ${movedCount}\n\n`;
+              
+              for (const issue of movedIssues) {
+                reportBody += `- #${issue.number} - [${issue.title}](${issue.url})\n`;
+              }
+              
+              if (errorCount > 0) {
+                reportBody += `\n### ⚠️ Ошибок при переносе: ${errorCount}\n`;
+              }
+              
+              try {
+                await github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title: `🔄 Отчет: ${sourceIterationName} → ${targetIterationName}`,
+                  body: reportBody,
+                  labels: ['automation', 'report']
+                });
+                console.log('📝 Создан отчет о переносе');
+              } catch (error) {
+                console.error(`⚠️ Не удалось создать отчет: ${error.message}`);
+              }
+            }
+            
+            console.log('---');
+            console.log('🎉 Перенос завершен!');
