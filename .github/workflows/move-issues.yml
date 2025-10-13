@@ -18,7 +18,8 @@ on:
         default: true
   
   schedule:
-    - cron: '*/5 * * * *'  # Каждые 5 минут
+    # Запуск каждый день в 00:00 UTC (безопаснее чем каждые 5 минут)
+    - cron: '0 * * * *'
 
 jobs:
   move-issues:
@@ -35,26 +36,8 @@ jobs:
             
             let sourceIterationName, targetIterationName, addComment;
             
-            if (isScheduled) {
-              // При автоматическом запуске используем значения по умолчанию
-              // ВАЖНО: укажите названия ваших итераций здесь
-              sourceIterationName = 'Iterations 136';  // TODO: измените на нужную итерацию
-              targetIterationName = 'Iterations 137';  // TODO: измените на нужную итерацию
-              addComment = true;
-              
-              console.log('⏰ Автоматический запуск по расписанию');
-            } else {
-              // При ручном запуске используем введенные значения
-              sourceIterationName = '${{ github.event.inputs.source_iteration }}';
-              targetIterationName = '${{ github.event.inputs.target_iteration }}';
-              addComment = '${{ github.event.inputs.add_comment }}' === 'true';
-              
-              console.log('👤 Ручной запуск');
-            }
-            
             console.log('🚀 Начинаем перенос задач в Projects');
-            console.log(`📤 Источник: "${sourceIterationName}"`);
-            console.log(`📥 Цель: "${targetIterationName}"`);
+            console.log(`📅 Режим запуска: ${isScheduled ? 'Автоматический (schedule)' : 'Ручной (workflow_dispatch)'}`);
             console.log('---');
             
             // GraphQL запрос для получения информации о проекте
@@ -73,11 +56,12 @@ jobs:
                             id
                             title
                             startDate
+                            duration
                           }
                         }
                       }
                     }
-                    items(first: 100) {
+                    items(first: 10000) {
                       nodes {
                         id
                         content {
@@ -106,9 +90,7 @@ jobs:
               }
             `;
             
-            // Получаем номер проекта из URL (например, Projects/1)
-            // ВАЖНО: замените "1" на номер вашего проекта
-            const projectNumber = 3; // TODO: изменить на ваш номер проекта
+            const projectNumber = 3; // Номер вашего проекта
             const owner = context.repo.owner;
             
             let projectData;
@@ -132,8 +114,64 @@ jobs:
             
             console.log(`✅ Найден проект: ${project.title}`);
             
-            // Находим нужные итерации
+            // Получаем все итерации
             const iterations = iterationField.configuration.iterations;
+            
+            if (isScheduled) {
+              // АВТОМАТИЧЕСКОЕ ОПРЕДЕЛЕНИЕ ИТЕРАЦИЙ ПО ДАТЕ
+              const now = new Date();
+              
+              // Находим текущую активную итерацию
+              let currentIteration = null;
+              let previousIteration = null;
+              
+              for (const iteration of iterations) {
+                const startDate = new Date(iteration.startDate);
+                const duration = iteration.duration || 7; // По умолчанию 7 дней
+                const endDate = new Date(startDate);
+                endDate.setDate(endDate.getDate() + duration);
+                
+                if (now >= startDate && now < endDate) {
+                  currentIteration = iteration;
+                }
+                
+                // Предыдущая итерация - та, что закончилась недавно
+                if (now >= endDate && (!previousIteration || startDate > new Date(previousIteration.startDate))) {
+                  previousIteration = iteration;
+                }
+              }
+              
+              if (!currentIteration || !previousIteration) {
+                console.log('⚠️ Не удалось автоматически определить итерации');
+                console.log('Доступные итерации:', iterations.map(i => `${i.title} (${i.startDate})`).join(', '));
+                
+                // Можно либо выйти, либо использовать фоллбэк
+                core.setFailed('❌ Не найдена активная или предыдущая итерация');
+                return;
+              }
+              
+              sourceIterationName = previousIteration.title;
+              targetIterationName = currentIteration.title;
+              addComment = true;
+              
+              console.log(`🤖 Автоматически определены итерации:`);
+              console.log(`   📤 Источник: "${sourceIterationName}" (завершена ${previousIteration.startDate})`);
+              console.log(`   📥 Цель: "${targetIterationName}" (начало ${currentIteration.startDate})`);
+              
+            } else {
+              // РУЧНОЙ ЗАПУСК - используем введенные значения
+              sourceIterationName = '${{ github.event.inputs.source_iteration }}';
+              targetIterationName = '${{ github.event.inputs.target_iteration }}';
+              addComment = '${{ github.event.inputs.add_comment }}' === 'true';
+              
+              console.log(`👤 Ручной запуск с параметрами:`);
+              console.log(`   📤 Источник: "${sourceIterationName}"`);
+              console.log(`   📥 Цель: "${targetIterationName}"`);
+            }
+            
+            console.log('---');
+            
+            // Находим нужные итерации
             const sourceIteration = iterations.find(i => i.title === sourceIterationName);
             const targetIteration = iterations.find(i => i.title === targetIterationName);
             
@@ -155,8 +193,8 @@ jobs:
             
             // Фильтруем задачи из исходной итерации
             const itemsToMove = project.items.nodes.filter(item => {
-              if (!item.content) return false; // пропускаем пустые элементы
-              if (item.content.state === 'CLOSED') return false; // пропускаем закрытые
+              if (!item.content) return false;
+              if (item.content.state === 'CLOSED') return false;
               
               const iterationValue = item.iterationValue;
               if (!iterationValue || !iterationValue.iterationId) return false;
@@ -200,7 +238,6 @@ jobs:
               try {
                 const issue = item.content;
                 
-                // Обновляем итерацию
                 await github.graphql(updateMutation, {
                   projectId: project.id,
                   itemId: item.id,
@@ -208,7 +245,6 @@ jobs:
                   iterationId: targetIteration.id
                 });
                 
-                // Добавляем комментарий к issue (если включено)
                 if (addComment) {
                   await github.rest.issues.createComment({
                     owner: context.repo.owner,
@@ -233,16 +269,16 @@ jobs:
             }
             
             console.log('---');
-            console.log(`📈 Результаты переноса:`);
-            console.log(`   ✅ Успешно перенесено: ${movedCount}`);
+            console.log(`📈 Результаты:`);
+            console.log(`   ✅ Успешно: ${movedCount}`);
             console.log(`   ❌ Ошибок: ${errorCount}`);
-            console.log(`   📊 Всего обработано: ${itemsToMove.length}`);
             
-            // Создаем issue с отчетом
+            // Создаем отчет
             if (movedCount > 0) {
               let reportBody = `## 📋 Отчет о переносе задач\n\n`;
               reportBody += `**Источник:** ${sourceIterationName}\n`;
               reportBody += `**Назначение:** ${targetIterationName}\n`;
+              reportBody += `**Режим:** ${isScheduled ? 'Автоматический' : 'Ручной'}\n`;
               reportBody += `**Дата:** ${new Date().toLocaleString('ru-RU')}\n\n`;
               reportBody += `### ✅ Перенесено задач: ${movedCount}\n\n`;
               
@@ -251,7 +287,7 @@ jobs:
               }
               
               if (errorCount > 0) {
-                reportBody += `\n### ⚠️ Ошибок при переносе: ${errorCount}\n`;
+                reportBody += `\n### ⚠️ Ошибок: ${errorCount}\n`;
               }
               
               try {
@@ -262,11 +298,10 @@ jobs:
                   body: reportBody,
                   labels: ['automation', 'report']
                 });
-                console.log('📝 Создан отчет о переносе');
+                console.log('📝 Создан отчет');
               } catch (error) {
                 console.error(`⚠️ Не удалось создать отчет: ${error.message}`);
               }
             }
             
-            console.log('---');
             console.log('🎉 Перенос завершен!');
