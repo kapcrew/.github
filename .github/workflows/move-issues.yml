@@ -40,8 +40,8 @@ jobs:
             if (isScheduled) {
               // При автоматическом запуске используем значения по умолчанию
               // TODO: Настройте эти значения под ваши нужды
-              sourceIterationName = 'Iterations 133';  // Предыдущая итерация
-              targetIterationName = 'Iterations 136';  // Текущая итерация
+              sourceIterationName = 'Iterations 136';  // Предыдущая итерация
+              targetIterationName = 'Iterations 137';  // Текущая итерация
               addComment = true;
               
               console.log('⏰ Автоматический запуск по расписанию');
