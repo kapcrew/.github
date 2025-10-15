@@ -18,7 +18,7 @@ on:
         default: true
   
   schedule:
-    - cron: '*/5 * * * *'  # Каждые 5 минут
+    - cron: '*/10 * * * *'  # Каждые 5 минут
 
 jobs:
   move-issues:
