@@ -72,9 +72,15 @@ jobs:
                 }
                 fs.writeFileSync(stateFilePath, JSON.stringify(state, null, 2));
                 console.log(`💾 Состояние сохранено: текущая итерация = ${state.currentIteration}`);
+                
+                // Устанавливаем output для следующего шага
+                core.setOutput('state_updated', 'true');
+                core.setOutput('new_iteration', state.currentIteration.toString());
+                
                 return true;
               } catch (error) {
                 console.error(`❌ Не удалось сохранить состояние: ${error.message}`);
+                core.setOutput('state_updated', 'false');
                 return false;
               }
             }
@@ -337,6 +343,8 @@ jobs:
             
             if (itemsToMove.length === 0) {
               console.log('✨ Нет задач для переноса');
+              core.setOutput('tasks_moved', '0');
+              core.setOutput('state_updated', 'false');
               return;
             }
             
@@ -412,6 +420,9 @@ jobs:
             console.log(`   ❌ Ошибок: ${errorCount}`);
             console.log(`   📊 Всего обработано: ${itemsToMove.length}`);
             
+            // Устанавливаем output для следующего шага
+            core.setOutput('tasks_moved', movedCount.toString());
+            
             if (errors.length > 0) {
               console.log('\n⚠️  Детали ошибок:');
               errors.forEach(err => console.log(`   - ${err}`));
@@ -472,11 +483,15 @@ jobs:
               }
             }
       
-      - name: Commit state file
-        if: success()
+      - name: Commit and push state file
+        if: steps.move-tasks.outputs.state_updated == 'true'
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add .github/workflows/iteration-state.json || true
-          git diff --quiet && git diff --staged --quiet || git commit -m "🔄 Обновление состояния итераций [skip ci]"
-          git push || echo "No changes to commit"
+          git add .github/workflows/iteration-state.json
+          if ! git diff --staged --quiet; then
+            git commit -m "🔄 Обновление состояния итераций [skip ci]"
+            git push https://x-access-token:${{ secrets.PROJECT_PAT }}@github.com/${{ github.repository }}.git HEAD:${{ github.ref }}
+          else
+            echo "Нет изменений для коммита"
+          fi
