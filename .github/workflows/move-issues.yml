@@ -1,16 +1,15 @@
-name: Перенос задач между итерациями (Projects)
+name: Перенос задач между итерациями (без коммитов)
 
 on:
-  # Ручной запуск
   workflow_dispatch:
     inputs:
       source_iteration:
-        description: 'Название предыдущей итерации (например: Iterations 133)'
-        required: true
+        description: 'Номер предыдущей итерации (например: 133). Оставьте пустым для автоопределения'
+        required: false
         type: string
       target_iteration:
-        description: 'Название текущей итерации (например: Iterations 136)'
-        required: true
+        description: 'Номер текущей итерации (например: 136). Оставьте пустым для автоопределения'
+        required: false
         type: string
       add_comment:
         description: 'Добавить комментарий к перенесенным задачам?'
@@ -18,13 +17,15 @@ on:
         type: boolean
         default: true
   
-  # Автоматический запуск по расписанию (каждые 10 минут)
   schedule:
-    - cron: '*/10 * * * *'  # Каждые 10 минут
+    - cron: '*/5 * * * *'  # Каждые 5 минут
 
 jobs:
   move-issues:
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
     
     steps:
       - name: Перенос задач между итерациями в Projects
@@ -32,26 +33,103 @@ jobs:
         with:
           github-token: ${{ secrets.PROJECT_PAT }}
           script: |
-            // Определяем источник запуска
+            // Функция для получения текущей итерации из Repository Variable
+            async function getCurrentIteration() {
+              try {
+                const { data } = await github.rest.actions.getRepoVariable({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: 'CURRENT_ITERATION'
+                });
+                return parseInt(data.value);
+              } catch (error) {
+                console.log('⚠️  Переменная CURRENT_ITERATION не найдена, используем значение по умолчанию');
+                return 136; // TODO: установите начальную итерацию
+              }
+            }
+            
+            // Функция для обновления текущей итерации
+            async function updateCurrentIteration(newValue) {
+              try {
+                await github.rest.actions.updateRepoVariable({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: 'CURRENT_ITERATION',
+                  value: newValue.toString()
+                });
+                console.log(`💾 Переменная CURRENT_ITERATION обновлена: ${newValue}`);
+                return true;
+              } catch (error) {
+                if (error.status === 404) {
+                  // Переменная не существует, создаем её
+                  try {
+                    await github.rest.actions.createRepoVariable({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      name: 'CURRENT_ITERATION',
+                      value: newValue.toString()
+                    });
+                    console.log(`✅ Переменная CURRENT_ITERATION создана: ${newValue}`);
+                    return true;
+                  } catch (createError) {
+                    console.error(`❌ Не удалось создать переменную: ${createError.message}`);
+                    return false;
+                  }
+                } else {
+                  console.error(`❌ Не удалось обновить переменную: ${error.message}`);
+                  return false;
+                }
+              }
+            }
+            
+            // Функция для нормализации названия итерации
+            function normalizeIterationName(input) {
+              if (!input) return null;
+              if (/^\d+$/.test(input.trim())) {
+                return `Iterations ${input.trim()}`;
+              }
+              return input.trim();
+            }
+            
+            // Определяем режим запуска
             const isScheduled = context.eventName === 'schedule';
+            const currentIterationNum = await getCurrentIteration();
             
             let sourceIterationName, targetIterationName, addComment;
             
             if (isScheduled) {
-              // При автоматическом запуске используем значения по умолчанию
-              // TODO: Настройте эти значения под ваши нужды
-              sourceIterationName = 'Iterations 136';  // Предыдущая итерация
-              targetIterationName = 'Iterations 137';  // Текущая итерация
+              // Автоматический запуск
+              const sourceNum = currentIterationNum;
+              const targetNum = currentIterationNum + 1;
+              
+              sourceIterationName = normalizeIterationName(sourceNum.toString());
+              targetIterationName = normalizeIterationName(targetNum.toString());
               addComment = true;
               
               console.log('⏰ Автоматический запуск по расписанию');
+              console.log(`📊 Текущая итерация из переменной: ${sourceNum}`);
             } else {
-              // При ручном запуске используем введенные значения
-              sourceIterationName = '${{ github.event.inputs.source_iteration }}';
-              targetIterationName = '${{ github.event.inputs.target_iteration }}';
-              addComment = '${{ github.event.inputs.add_comment }}' === 'true';
+              // Ручной запуск
+              const sourceInput = '${{ github.event.inputs.source_iteration }}';
+              const targetInput = '${{ github.event.inputs.target_iteration }}';
               
-              console.log('🖱️ Ручной запуск');
+              if (!sourceInput && !targetInput) {
+                const sourceNum = currentIterationNum;
+                const targetNum = currentIterationNum + 1;
+                
+                sourceIterationName = normalizeIterationName(sourceNum.toString());
+                targetIterationName = normalizeIterationName(targetNum.toString());
+                
+                console.log('👤 Ручной запуск с автоопределением итераций');
+                console.log(`📊 Текущая итерация из переменной: ${sourceNum}`);
+              } else {
+                sourceIterationName = normalizeIterationName(sourceInput);
+                targetIterationName = normalizeIterationName(targetInput);
+                
+                console.log('👤 Ручной запуск с указанными итерациями');
+              }
+              
+              addComment = '${{ github.event.inputs.add_comment }}' === 'true';
             }
             
             console.log('🚀 Начинаем перенос задач в Projects');
@@ -62,8 +140,8 @@ jobs:
             const projectNumber = 3; // TODO: изменить на ваш номер проекта
             const owner = context.repo.owner;
             
-            // Функция для получения всех элементов проекта с пагинацией
-            async function getAllProjectItems(projectId, iterationFieldId) {
+            // Функция для получения всех элементов проекта
+            async function getAllProjectItems(projectId) {
               let allItems = [];
               let hasNextPage = true;
               let cursor = null;
@@ -99,16 +177,6 @@ jobs:
                                   }
                                   iterationId
                                   title
-                                  startDate
-                                }
-                                ... on ProjectV2ItemFieldSingleSelectValue {
-                                  field {
-                                    ... on ProjectV2SingleSelectField {
-                                      id
-                                      name
-                                    }
-                                  }
-                                  name
                                 }
                               }
                             }
@@ -129,8 +197,6 @@ jobs:
                 
                 hasNextPage = result.node.items.pageInfo.hasNextPage;
                 cursor = result.node.items.pageInfo.endCursor;
-                
-                console.log(`📥 Загружено элементов: ${allItems.length}`);
               }
               
               return allItems;
@@ -152,14 +218,10 @@ jobs:
                             iterations {
                               id
                               title
-                              startDate
-                              duration
                             }
                             completedIterations {
                               id
                               title
-                              startDate
-                              duration
                             }
                           }
                         }
@@ -182,8 +244,6 @@ jobs:
             }
             
             const project = projectData.organization.projectV2;
-            
-            // Находим поле Iterations
             const iterationField = project.fields.nodes.find(field => field.name === 'Iterations');
             
             if (!iterationField) {
@@ -193,35 +253,22 @@ jobs:
             
             console.log(`✅ Найден проект: ${project.title}`);
             
-            // Объединяем активные и завершенные итерации
             const activeIterations = iterationField.configuration.iterations || [];
             const completedIterations = iterationField.configuration.completedIterations || [];
             const allIterations = [...activeIterations, ...completedIterations];
             
             console.log(`📊 Найдено итераций: ${allIterations.length}`);
-            console.log(`   - Активных: ${activeIterations.length}`);
-            console.log(`   - Завершенных: ${completedIterations.length}`);
             
-            // Выводим все доступные итерации для отладки
-            console.log('📋 Доступные итерации:');
-            allIterations.forEach(iter => {
-              console.log(`   - "${iter.title}" (ID: ${iter.id.substring(iter.id.length - 8)})`);
-            });
-            console.log('---');
-            
-            // Находим нужные итерации
             const sourceIteration = allIterations.find(i => i.title === sourceIterationName);
             const targetIteration = allIterations.find(i => i.title === targetIterationName);
             
             if (!sourceIteration) {
               core.setFailed(`❌ Итерация "${sourceIterationName}" не найдена`);
-              console.log('💡 Проверьте точное название (с учетом регистра и пробелов)');
               return;
             }
             
             if (!targetIteration) {
               core.setFailed(`❌ Итерация "${targetIterationName}" не найдена`);
-              console.log('💡 Проверьте точное название (с учетом регистра и пробелов)');
               return;
             }
             
@@ -229,39 +276,23 @@ jobs:
             console.log(`✅ Найдена целевая итерация: ${targetIteration.title}`);
             console.log('---');
             
-            // Получаем все элементы проекта
             console.log('📥 Загружаем все элементы проекта...');
-            const allItems = await getAllProjectItems(project.id, iterationField.id);
+            const allItems = await getAllProjectItems(project.id);
             console.log(`📊 Всего элементов в проекте: ${allItems.length}`);
-            console.log('---');
             
-            // Фильтруем задачи из исходной итерации
             const itemsToMove = allItems.filter(item => {
-              if (!item.content) return false; // пропускаем пустые элементы
-              if (item.content.state === 'CLOSED') return false; // пропускаем закрытые
+              if (!item.content) return false;
+              if (item.content.state === 'CLOSED') return false;
               
-              // Ищем значение поля итерации
               const iterationValue = item.fieldValues.nodes.find(fv => 
                 fv.field?.name === 'Iterations' && fv.iterationId
               );
               
               if (!iterationValue) return false;
-              
               return iterationValue.iterationId === sourceIteration.id;
             });
             
             console.log(`📊 Найдено задач для переноса: ${itemsToMove.length}`);
-            
-            // Выводим информацию о найденных задачах
-            if (itemsToMove.length > 0) {
-              console.log('📋 Список задач для переноса:');
-              itemsToMove.forEach(item => {
-                const iterationValue = item.fieldValues.nodes.find(fv => 
-                  fv.field?.name === 'Iterations'
-                );
-                console.log(`   - #${item.content.number}: ${item.content.title} (итерация: ${iterationValue?.title})`);
-              });
-            }
             
             if (itemsToMove.length === 0) {
               console.log('✨ Нет задач для переноса');
@@ -271,11 +302,8 @@ jobs:
             console.log('---');
             
             let movedCount = 0;
-            let errorCount = 0;
             const movedIssues = [];
-            const errors = [];
             
-            // Mutation для обновления поля итерации
             const updateMutation = `
               mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $iterationId: String!) {
                 updateProjectV2ItemFieldValue(
@@ -293,12 +321,10 @@ jobs:
               }
             `;
             
-            // Переносим каждую задачу
             for (const item of itemsToMove) {
               try {
                 const issue = item.content;
                 
-                // Обновляем итерацию
                 await github.graphql(updateMutation, {
                   projectId: project.id,
                   itemId: item.id,
@@ -306,21 +332,16 @@ jobs:
                   iterationId: targetIteration.id
                 });
                 
-                // Добавляем комментарий к issue (если включено)
                 if (addComment) {
                   try {
-                    const commentBody = isScheduled 
-                      ? `🔄 Задача автоматически перенесена по расписанию из итерации **"${sourceIterationName}"** в **"${targetIterationName}"**\n\n_Дата переноса: ${new Date().toLocaleString('ru-RU')}_`
-                      : `🔄 Задача автоматически перенесена из итерации **"${sourceIterationName}"** в **"${targetIterationName}"**\n\n_Дата переноса: ${new Date().toLocaleString('ru-RU')}_`;
-                    
                     await github.rest.issues.createComment({
                       owner: context.repo.owner,
                       repo: context.repo.repo,
                       issue_number: issue.number,
-                      body: commentBody
+                      body: `🔄 Задача автоматически перенесена из итерации **"${sourceIterationName}"** в **"${targetIterationName}"**\n\n_Дата переноса: ${new Date().toLocaleString('ru-RU')}_`
                     });
                   } catch (commentError) {
-                    console.log(`⚠️  Не удалось добавить комментарий к #${issue.number}: ${commentError.message}`);
+                    console.log(`⚠️  Не удалось добавить комментарий к #${issue.number}`);
                   }
                 }
                 
@@ -333,61 +354,21 @@ jobs:
                 console.log(`✅ #${issue.number}: ${issue.title}`);
                 
               } catch (error) {
-                errorCount++;
-                const errorMsg = `#${item.content?.number}: ${error.message}`;
-                errors.push(errorMsg);
-                console.error(`❌ Ошибка при переносе ${errorMsg}`);
+                console.error(`❌ Ошибка при переносе #${item.content?.number}: ${error.message}`);
               }
             }
             
             console.log('---');
-            console.log(`📈 Результаты переноса:`);
-            console.log(`   ✅ Успешно перенесено: ${movedCount}`);
-            console.log(`   ❌ Ошибок: ${errorCount}`);
-            console.log(`   📊 Всего обработано: ${itemsToMove.length}`);
+            console.log(`📈 Результаты: перенесено ${movedCount} задач`);
             
-            if (errors.length > 0) {
-              console.log('\n⚠️  Детали ошибок:');
-              errors.forEach(err => console.log(`   - ${err}`));
-            }
-            
-            // Создаем issue с отчетом (только если были перенесены задачи)
+            // Обновляем переменную после успешного переноса
             if (movedCount > 0) {
-              let reportBody = `## 📋 Отчет о переносе задач\n\n`;
-              reportBody += `**Тип запуска:** ${isScheduled ? '⏰ Автоматический (по расписанию)' : '🖱️ Ручной'}\n`;
-              reportBody += `**Источник:** ${sourceIterationName}\n`;
-              reportBody += `**Назначение:** ${targetIterationName}\n`;
-              reportBody += `**Дата:** ${new Date().toLocaleString('ru-RU')}\n\n`;
-              reportBody += `### ✅ Перенесено задач: ${movedCount}\n\n`;
+              const targetIterationNumber = parseInt(targetIterationName.replace(/\D/g, ''));
               
-              for (const issue of movedIssues) {
-                reportBody += `- #${issue.number} - [${issue.title}](${issue.url})\n`;
-              }
-              
-              if (errorCount > 0) {
-                reportBody += `\n### ⚠️ Ошибок при переносе: ${errorCount}\n\n`;
-                errors.forEach(err => {
-                  reportBody += `- ${err}\n`;
-                });
-              }
-              
-              try {
-                const reportTitle = isScheduled 
-                  ? `⏰ Отчет (авто): ${sourceIterationName} → ${targetIterationName}`
-                  : `🔄 Отчет: ${sourceIterationName} → ${targetIterationName}`;
-                
-                await github.rest.issues.create({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  title: reportTitle,
-                  body: reportBody,
-                  labels: ['automation', 'report']
-                });
-                console.log('📝 Создан отчет о переносе');
-              } catch (error) {
-                console.error(`⚠️ Не удалось создать отчет: ${error.message}`);
+              if (targetIterationNumber) {
+                await updateCurrentIteration(targetIterationNumber);
+                console.log(`✅ Следующий запуск: ${targetIterationNumber} → ${targetIterationNumber + 1}`);
               }
             }
             
-            console.log('---');
             console.log('🎉 Перенос завершен!');
