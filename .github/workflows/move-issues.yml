@@ -18,8 +18,8 @@ on:
         default: true
   
   schedule:
-    - cron: '0 * * * *'  # Каждые 5 минут
-
+    - cron: '0 6 * * 1'  # Каждые 5 минут
+    
 jobs:
   move-issues:
     runs-on: ubuntu-latest
