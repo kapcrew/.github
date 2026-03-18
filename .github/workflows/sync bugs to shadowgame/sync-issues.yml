@@ -1,0 +1,121 @@
+name: Sync Issues to shadowgame
+
+on:
+  issues:
+    types: [opened, edited, closed, reopened, labeled, unlabeled]
+  issue_comment:
+    types: [created]
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Sync issue to shadowgame
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PAT_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const sourceRepo = context.repo.repo; // shadowbugs
+            const targetRepo = 'shadowgame';
+
+            const issue = context.payload.issue;
+            const eventName = context.eventName;
+            const action = context.payload.action;
+
+            // Скрытый маркер для отслеживания связи между issues
+            const marker = `<!-- synced-from: ${sourceRepo}#${issue.number} -->`;
+
+            // Поиск синхронизированного issue в shadowgame через API поиска
+            async function findSyncedIssue() {
+              const { data: result } = await github.rest.search.issuesAndPullRequests({
+                q: `repo:${owner}/${targetRepo} in:body "${sourceRepo}#${issue.number}" is:issue`,
+              });
+              return result.items.find(i => i.body && i.body.includes(marker)) || null;
+            }
+
+            // Формирование тела issue
+            function buildBody(originalBody) {
+              return `${marker}\n> 🔗 Оригинал: ${issue.html_url}\n\n${originalBody || ''}`;
+            }
+
+            // ─── Обработка событий issues ───────────────────────────────────────
+
+            if (eventName === 'issues') {
+
+              if (action === 'opened') {
+                const { data: created } = await github.rest.issues.create({
+                  owner,
+                  repo: targetRepo,
+                  title: issue.title,
+                  body: buildBody(issue.body),
+                  labels: issue.labels.map(l => l.name),
+                });
+                console.log(`✅ Issue #${issue.number} скопирован → ${targetRepo}#${created.number}`);
+
+              } else {
+                const synced = await findSyncedIssue();
+                if (!synced) {
+                  console.log(`⚠️  Синхронизированный issue не найден для ${sourceRepo}#${issue.number}`);
+                  return;
+                }
+
+                if (action === 'edited') {
+                  await github.rest.issues.update({
+                    owner,
+                    repo: targetRepo,
+                    issue_number: synced.number,
+                    title: issue.title,
+                    body: buildBody(issue.body),
+                  });
+                  console.log(`✅ Issue #${issue.number} отредактирован → ${targetRepo}#${synced.number}`);
+
+                } else if (action === 'closed') {
+                  await github.rest.issues.update({
+                    owner,
+                    repo: targetRepo,
+                    issue_number: synced.number,
+                    state: 'closed',
+                    state_reason: context.payload.issue.state_reason || 'completed',
+                  });
+                  console.log(`✅ Issue #${issue.number} закрыт → ${targetRepo}#${synced.number}`);
+
+                } else if (action === 'reopened') {
+                  await github.rest.issues.update({
+                    owner,
+                    repo: targetRepo,
+                    issue_number: synced.number,
+                    state: 'open',
+                  });
+                  console.log(`✅ Issue #${issue.number} переоткрыт → ${targetRepo}#${synced.number}`);
+
+                } else if (action === 'labeled' || action === 'unlabeled') {
+                  await github.rest.issues.update({
+                    owner,
+                    repo: targetRepo,
+                    issue_number: synced.number,
+                    labels: issue.labels.map(l => l.name),
+                  });
+                  console.log(`✅ Метки синхронизированы → ${targetRepo}#${synced.number}`);
+                }
+              }
+
+            // ─── Обработка событий комментариев ────────────────────────────────
+
+            } else if (eventName === 'issue_comment') {
+              const synced = await findSyncedIssue();
+              if (!synced) {
+                console.log(`⚠️  Синхронизированный issue не найден для ${sourceRepo}#${issue.number}`);
+                return;
+              }
+
+              const comment = context.payload.comment;
+              await github.rest.issues.createComment({
+                owner,
+                repo: targetRepo,
+                issue_number: synced.number,
+                body: `> 💬 **${comment.user.login}** (из [${sourceRepo}#${issue.number}](${issue.html_url})):\n\n${comment.body}`,
+              });
+              console.log(`✅ Комментарий синхронизирован → ${targetRepo}#${synced.number}`);
+            }
