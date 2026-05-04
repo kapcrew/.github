@@ -1,181 +1,99 @@
-name: Перенос задач между итерациями (Gist)
+name: Move Issues Between Iterations
 
 on:
   workflow_dispatch:
     inputs:
       source_iteration:
-        description: 'Номер предыдущей итерации (например: 133). Оставьте пустым для автоопределения'
+        description: 'Source iteration number (e.g. 133). Leave empty for auto-detect'
         required: false
         type: string
       target_iteration:
-        description: 'Номер текущей итерации (например: 136). Оставьте пустым для автоопределения'
+        description: 'Target iteration number (e.g. 136). Leave empty for auto-detect'
         required: false
         type: string
-      add_comment:
-        description: 'Добавить комментарий к перенесенным задачам?'
-        required: false
-        type: boolean
-        default: true
-  
   schedule:
-    - cron: '0 6 * * 1'  # Каждые 5 минут
-    
+    - cron: '0 6 * * 1'  # Every Monday at 06:00 UTC
+
 jobs:
   move-issues:
     runs-on: ubuntu-latest
-    
+
     steps:
-      - name: Перенос задач между итерациями в Projects
+      - name: Move issues between iterations
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.PROJECT_PAT }}
           script: |
-            // ID вашего Gist для хранения состояния
-            const GIST_ID = '${{ vars.STATE_GIST_ID }}'; // TODO: создайте Gist и укажите его ID
+            const GIST_ID = '${{ vars.STATE_GIST_ID }}';
             const GIST_FILENAME = 'iteration-state.json';
-            
-            // Функция для чтения состояния из Gist
+            const PROJECT_NUMBER = 3; // ⚠️ Change to your project number
+            const DEFAULT_ITERATION = 136; // ⚠️ Fallback if Gist is unavailable
+
             async function readStateFromGist() {
               try {
-                if (!GIST_ID) {
-                  console.log('⚠️  GIST_ID не указан, используем значение по умолчанию');
-                  return { currentIteration: 136 };
-                }
-                
-                const { data: gist } = await github.rest.gists.get({
-                  gist_id: GIST_ID
-                });
-                
+                if (!GIST_ID) return { currentIteration: DEFAULT_ITERATION };
+                const { data: gist } = await github.rest.gists.get({ gist_id: GIST_ID });
                 const file = gist.files[GIST_FILENAME];
-                if (file && file.content) {
+                if (file?.content) {
                   const state = JSON.parse(file.content);
-                  console.log(`📖 Прочитано состояние из Gist: итерация ${state.currentIteration}`);
+                  console.log(`📖 State loaded from Gist: iteration ${state.currentIteration}`);
                   return state;
                 }
               } catch (error) {
-                console.log(`⚠️  Ошибка чтения Gist: ${error.message}`);
+                console.log(`⚠️ Failed to read Gist: ${error.message}`);
               }
-              
-              return { currentIteration: 136 };
+              return { currentIteration: DEFAULT_ITERATION };
             }
-            
-            // Функция для сохранения состояния в Gist
+
             async function saveStateToGist(state) {
               try {
-                if (!GIST_ID) {
-                  console.log('⚠️  GIST_ID не указан, состояние не сохранено');
-                  return false;
-                }
-                
+                if (!GIST_ID) return false;
                 await github.rest.gists.update({
                   gist_id: GIST_ID,
-                  files: {
-                    [GIST_FILENAME]: {
-                      content: JSON.stringify(state, null, 2)
-                    }
-                  }
+                  files: { [GIST_FILENAME]: { content: JSON.stringify(state, null, 2) } }
                 });
-                
-                console.log(`💾 Состояние сохранено в Gist: итерация ${state.currentIteration}`);
+                console.log(`💾 State saved to Gist: iteration ${state.currentIteration}`);
                 return true;
               } catch (error) {
-                console.error(`❌ Ошибка сохранения в Gist: ${error.message}`);
+                console.error(`❌ Failed to save Gist: ${error.message}`);
                 return false;
               }
             }
-            
-            // Функция для нормализации названия итерации
+
             function normalizeIterationName(input) {
               if (!input) return null;
-              if (/^\d+$/.test(input.trim())) {
-                return `Iterations ${input.trim()}`;
-              }
-              return input.trim();
+              return /^\d+$/.test(input.trim())
+                ? `Iterations ${input.trim()}`
+                : input.trim();
             }
-            
-            // Читаем текущее состояние
-            const state = await readStateFromGist();
-            const isScheduled = context.eventName === 'schedule';
-            
-            let sourceIterationName, targetIterationName, addComment;
-            
-            if (isScheduled) {
-              const sourceNum = state.currentIteration;
-              const targetNum = state.currentIteration + 1;
-              
-              sourceIterationName = normalizeIterationName(sourceNum.toString());
-              targetIterationName = normalizeIterationName(targetNum.toString());
-              addComment = true;
-              
-              console.log('⏰ Автоматический запуск по расписанию');
-              console.log(`📊 Текущая итерация: ${sourceNum}`);
-            } else {
-              const sourceInput = '${{ github.event.inputs.source_iteration }}';
-              const targetInput = '${{ github.event.inputs.target_iteration }}';
-              
-              if (!sourceInput && !targetInput) {
-                const sourceNum = state.currentIteration;
-                const targetNum = state.currentIteration + 1;
-                
-                sourceIterationName = normalizeIterationName(sourceNum.toString());
-                targetIterationName = normalizeIterationName(targetNum.toString());
-                
-                console.log('👤 Ручной запуск с автоопределением');
-              } else {
-                sourceIterationName = normalizeIterationName(sourceInput);
-                targetIterationName = normalizeIterationName(targetInput);
-                
-                console.log('👤 Ручной запуск с указанными итерациями');
-              }
-              
-              addComment = '${{ github.event.inputs.add_comment }}' === 'true';
-            }
-            
-            console.log('🚀 Начинаем перенос задач в Projects');
-            console.log(`📤 Источник: "${sourceIterationName}"`);
-            console.log(`📥 Цель: "${targetIterationName}"`);
-            console.log('---');
-            
-            const projectNumber = 3; // TODO: изменить на ваш номер проекта
-            const owner = context.repo.owner;
-            
-            // Функция для получения всех элементов проекта
+
             async function getAllProjectItems(projectId) {
               let allItems = [];
               let hasNextPage = true;
               let cursor = null;
-              
+
               while (hasNextPage) {
-                const query = `
+                const result = await github.graphql(`
                   query($projectId: ID!, $cursor: String) {
                     node(id: $projectId) {
                       ... on ProjectV2 {
                         items(first: 100, after: $cursor) {
-                          pageInfo {
-                            hasNextPage
-                            endCursor
-                          }
+                          pageInfo { hasNextPage endCursor }
                           nodes {
                             id
                             content {
-                              ... on Issue {
-                                number
-                                title
-                                url
-                                state
-                              }
+                              ... on Issue { number title url state }
                             }
                             fieldValues(first: 20) {
                               nodes {
                                 ... on ProjectV2ItemFieldIterationValue {
-                                  field {
-                                    ... on ProjectV2IterationField {
-                                      id
-                                      name
-                                    }
-                                  }
+                                  field { ... on ProjectV2IterationField { id name } }
                                   iterationId
                                   title
+                                }
+                                ... on ProjectV2ItemFieldSingleSelectValue {
+                                  field { ... on ProjectV2SingleSelectField { name } }
+                                  name
                                 }
                               }
                             }
@@ -184,43 +102,59 @@ jobs:
                       }
                     }
                   }
-                `;
-                
-                const result = await github.graphql(query, {
-                  projectId: projectId,
-                  cursor: cursor
-                });
-                
-                const items = result.node.items.nodes;
-                allItems = allItems.concat(items);
-                
+                `, { projectId, cursor });
+
+                allItems = allItems.concat(result.node.items.nodes);
                 hasNextPage = result.node.items.pageInfo.hasNextPage;
                 cursor = result.node.items.pageInfo.endCursor;
               }
-              
+
               return allItems;
             }
-            
-            // GraphQL запрос для получения информации о проекте
-            const projectQuery = `
-              query($owner: String!, $number: Int!) {
-                organization(login: $owner) {
-                  projectV2(number: $number) {
-                    id
-                    title
-                    fields(first: 20) {
-                      nodes {
-                        ... on ProjectV2IterationField {
-                          id
-                          name
-                          configuration {
-                            iterations {
-                              id
-                              title
-                            }
-                            completedIterations {
-                              id
-                              title
+
+            // ─── Resolve iteration names ───────────────────────────────────────
+
+            const state = await readStateFromGist();
+            const isScheduled = context.eventName === 'schedule';
+            let sourceIterationName, targetIterationName;
+
+            if (isScheduled) {
+              sourceIterationName = normalizeIterationName(state.currentIteration.toString());
+              targetIterationName = normalizeIterationName((state.currentIteration + 1).toString());
+              console.log(`⏰ Scheduled run — iteration ${state.currentIteration}`);
+            } else {
+              const sourceInput = '${{ github.event.inputs.source_iteration }}';
+              const targetInput = '${{ github.event.inputs.target_iteration }}';
+
+              if (!sourceInput && !targetInput) {
+                sourceIterationName = normalizeIterationName(state.currentIteration.toString());
+                targetIterationName = normalizeIterationName((state.currentIteration + 1).toString());
+                console.log('👤 Manual run — auto-detected iterations');
+              } else {
+                sourceIterationName = normalizeIterationName(sourceInput);
+                targetIterationName = normalizeIterationName(targetInput);
+                console.log('👤 Manual run — custom iterations');
+              }
+            }
+
+            console.log(`🚀 Moving issues: "${sourceIterationName}" → "${targetIterationName}"`);
+
+            // ─── Fetch project data ────────────────────────────────────────────
+
+            let projectData;
+            try {
+              projectData = await github.graphql(`
+                query($owner: String!, $number: Int!) {
+                  organization(login: $owner) {
+                    projectV2(number: $number) {
+                      id title
+                      fields(first: 20) {
+                        nodes {
+                          ... on ProjectV2IterationField {
+                            id name
+                            configuration {
+                              iterations { id title }
+                              completedIterations { id title }
                             }
                           }
                         }
@@ -228,154 +162,111 @@ jobs:
                     }
                   }
                 }
-              }
-            `;
-            
-            let projectData;
-            try {
-              projectData = await github.graphql(projectQuery, {
-                owner: owner,
-                number: projectNumber
-              });
+              `, { owner: context.repo.owner, number: PROJECT_NUMBER });
             } catch (error) {
-              core.setFailed(`❌ Ошибка получения данных проекта: ${error.message}`);
+              core.setFailed(`❌ Failed to fetch project: ${error.message}`);
               return;
             }
-            
+
             const project = projectData.organization.projectV2;
-            const iterationField = project.fields.nodes.find(field => field.name === 'Iterations');
-            
+            const iterationField = project.fields.nodes.find(f => f.name === 'Iterations');
+
             if (!iterationField) {
-              core.setFailed('❌ Поле "Iterations" не найдено в проекте');
+              core.setFailed('❌ Field "Iterations" not found in project');
               return;
             }
-            
-            console.log(`✅ Найден проект: ${project.title}`);
-            
-            const activeIterations = iterationField.configuration.iterations || [];
-            const completedIterations = iterationField.configuration.completedIterations || [];
-            const allIterations = [...activeIterations, ...completedIterations];
-            
+
+            const allIterations = [
+              ...(iterationField.configuration.iterations || []),
+              ...(iterationField.configuration.completedIterations || [])
+            ];
+
             const sourceIteration = allIterations.find(i => i.title === sourceIterationName);
             const targetIteration = allIterations.find(i => i.title === targetIterationName);
-            
+
             if (!sourceIteration) {
-              core.setFailed(`❌ Итерация "${sourceIterationName}" не найдена`);
-              console.log('Доступные итерации:', allIterations.map(i => i.title).join(', '));
+              core.setFailed(`❌ Iteration "${sourceIterationName}" not found. Available: ${allIterations.map(i => i.title).join(', ')}`);
               return;
             }
-            
             if (!targetIteration) {
-              core.setFailed(`❌ Итерация "${targetIterationName}" не найдена`);
-              console.log('Доступные итерации:', allIterations.map(i => i.title).join(', '));
+              core.setFailed(`❌ Iteration "${targetIterationName}" not found. Available: ${allIterations.map(i => i.title).join(', ')}`);
               return;
             }
-            
-            console.log(`✅ Найдена исходная итерация: ${sourceIteration.title}`);
-            console.log(`✅ Найдена целевая итерация: ${targetIteration.title}`);
-            console.log('---');
-            
-            console.log('📥 Загружаем все элементы проекта...');
+
+            console.log(`✅ Project: ${project.title}`);
+
+            // ─── Filter issues to move ─────────────────────────────────────────
+
             const allItems = await getAllProjectItems(project.id);
-            console.log(`📊 Всего элементов в проекте: ${allItems.length}`);
-            
+            console.log(`📊 Total project items: ${allItems.length}`);
+
             const itemsToMove = allItems.filter(item => {
               if (!item.content) return false;
               if (item.content.state === 'CLOSED') return false;
-              
-              const iterationValue = item.fieldValues.nodes.find(fv => 
+
+              // Skip issues with Status = Done
+              const statusValue = item.fieldValues.nodes.find(fv => fv.field?.name === 'Status');
+              if (statusValue?.name === 'Done') return false;
+
+              const iterationValue = item.fieldValues.nodes.find(fv =>
                 fv.field?.name === 'Iterations' && fv.iterationId
               );
-              
-              if (!iterationValue) return false;
-              return iterationValue.iterationId === sourceIteration.id;
+              return iterationValue?.iterationId === sourceIteration.id;
             });
-            
-            console.log(`📊 Найдено задач для переноса: ${itemsToMove.length}`);
-            
+
+            console.log(`📋 Issues to move: ${itemsToMove.length}`);
             if (itemsToMove.length === 0) {
-              console.log('✨ Нет задач для переноса');
+              console.log('✨ Nothing to move');
               return;
             }
-            
-            console.log('---');
-            
+
+            // ─── Move issues ───────────────────────────────────────────────────
+
             let movedCount = 0;
-            const movedIssues = [];
-            
-            const updateMutation = `
-              mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $iterationId: String!) {
-                updateProjectV2ItemFieldValue(
-                  input: {
-                    projectId: $projectId
-                    itemId: $itemId
-                    fieldId: $fieldId
-                    value: {iterationId: $iterationId}
-                  }
-                ) {
-                  projectV2Item {
-                    id
-                  }
-                }
-              }
-            `;
-            
+
             for (const item of itemsToMove) {
               try {
-                const issue = item.content;
-                
-                await github.graphql(updateMutation, {
+                  mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $iterationId: String!) {
+                    updateProjectV2ItemFieldValue(input: {
+                      projectId: $projectId
+                      itemId: $itemId
+                      fieldId: $fieldId
+                      value: { iterationId: $iterationId }
+                    }) {
+                      projectV2Item { id }
+                    }
+                  }
+                `, {
                   projectId: project.id,
                   itemId: item.id,
                   fieldId: iterationField.id,
                   iterationId: targetIteration.id
                 });
-                
-                if (addComment) {
-                  try {
-                    await github.rest.issues.createComment({
-                      owner: context.repo.owner,
-                      repo: context.repo.repo,
-                      issue_number: issue.number,
-                      body: `🔄 Задача автоматически перенесена из итерации **"${sourceIterationName}"** в **"${targetIterationName}"**\n\n_Дата переноса: ${new Date().toLocaleString('ru-RU')}_`
-                    });
-                  } catch (commentError) {
-                    console.log(`⚠️  Не удалось добавить комментарий к #${issue.number}`);
-                  }
-                }
-                
+
                 movedCount++;
-                movedIssues.push({
-                  number: issue.number,
-                  title: issue.title,
-                  url: issue.url
-                });
-                console.log(`✅ #${issue.number}: ${issue.title}`);
-                
+                console.log(`✅ #${item.content.number}: ${item.content.title}`);
+
               } catch (error) {
-                console.error(`❌ Ошибка при переносе #${item.content?.number}: ${error.message}`);
+                console.error(`❌ Failed to move #${item.content?.number}: ${error.message}`);
               }
             }
-            
-            console.log('---');
-            console.log(`📈 Результаты: перенесено ${movedCount} задач`);
-            
-            // Обновляем состояние после успешного переноса
+
+            console.log(`📈 Done: ${movedCount} issue(s) moved`);
+
+            // ─── Save updated state ────────────────────────────────────────────
+
             if (movedCount > 0) {
-              const targetIterationNumber = parseInt(targetIterationName.replace(/\D/g, ''));
-              
-              if (targetIterationNumber) {
-                const newState = {
-                  currentIteration: targetIterationNumber,
+              const targetNum = parseInt(targetIterationName.replace(/\D/g, ''));
+              if (targetNum) {
+                await saveStateToGist({
+                  currentIteration: targetNum,
                   lastUpdate: new Date().toISOString(),
                   lastSourceIteration: sourceIterationName,
                   lastTargetIteration: targetIterationName,
                   movedTasksCount: movedCount
-                };
-                
-                await saveStateToGist(newState);
-                console.log(`✅ Следующий запуск: ${targetIterationNumber} → ${targetIterationNumber + 1}`);
+                });
+                console.log(`✅ Next run will move: ${targetNum} → ${targetNum + 1}`);
               }
             }
-            
-            console.log('🎉 Перенос завершен!');
+
+            console.log('🎉 Completed!');
