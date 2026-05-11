@@ -226,6 +226,7 @@ jobs:
 
             for (const item of itemsToMove) {
               try {
+                await github.graphql(`
                   mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $iterationId: String!) {
                     updateProjectV2ItemFieldValue(input: {
                       projectId: $projectId
